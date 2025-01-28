@@ -1,0 +1,74 @@
+name: boost action tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-1:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        boost_version: ["", "1.78.0", "1.84.0"]
+        download_archive: ["true", "false"]
+        extract_archive: ["true", "false"]
+        working_dirs: ["", "/tmp"]
+
+    name: "boost_version: ${{ matrix.boost_version }} download_archive: ${{ matrix.download_archive }} extract_archive: ${{ matrix.extract_archive }} working_dirs: ${{ matrix.working_dirs }}"
+
+    steps:
+      - uses: userdocs/actions/boost@main
+        id: boost_version_info
+        with:
+          boost_version: ${{ matrix.boost_version }}
+          download_archive: ${{ matrix.download_archive }}
+          extract_archive: ${{ matrix.extract_archive }}
+          working_dir: ${{ matrix.working_dirs }}
+
+      - run: |
+          pwd
+          ls -la
+
+      - run: |
+          echo "${BOOST_WORKING_DIR}"
+          echo "${BOOST_WORKING_DIR}" >> $GITHUB_STEP_SUMMARY
+
+          echo "${BOOST_VERSION}"
+          echo "${BOOST_VERSION}" >> $GITHUB_STEP_SUMMARY
+
+          echo "${BOOST_MAJOR_VERSION}"
+          echo "${BOOST_MAJOR_VERSION}" >> $GITHUB_STEP_SUMMARY
+
+          echo "${BOOST_MINOR_VERSION}"
+          echo "${BOOST_MINOR_VERSION}" >> $GITHUB_STEP_SUMMARY
+
+          echo "${BOOST_PATCH_VERSION}"
+          echo "${BOOST_PATCH_VERSION}" >> $GITHUB_STEP_SUMMARY
+
+          echo "${BOOST_URL}"
+          echo "${BOOST_URL}" >> $GITHUB_STEP_SUMMARY
+
+          echo "${BOOST_ARCHIVE_NAME}"
+          echo "${BOOST_ARCHIVE_NAME}" >> $GITHUB_STEP_SUMMARY
+
+          echo "${BOOST_FOLDER_NAME}"
+          echo "${BOOST_FOLDER_NAME}" >> $GITHUB_STEP_SUMMARY
+
+          echo "${BOOST_ARCHIVE_SHA1SUM}"
+          echo "${BOOST_ARCHIVE_SHA1SUM}" >> $GITHUB_STEP_SUMMARY
+
+          echo "${BOOST_ARCHIVE_SHA256SUM}"
+          echo "${BOOST_ARCHIVE_SHA256SUM}" >> $GITHUB_STEP_SUMMARY
+        env:
+          BOOST_WORKING_DIR: ${{ steps.boost_version_info.outputs.BOOST_WORKING_DIR }}
+          BOOST_VERSION: ${{ steps.boost_version_info.outputs.BOOST_VERSION }}
+          BOOST_MAJOR_VERSION: ${{ steps.boost_version_info.outputs.BOOST_MAJOR_VERSION }}
+          BOOST_MINOR_VERSION: ${{ steps.boost_version_info.outputs.BOOST_MINOR_VERSION }}
+          BOOST_PATCH_VERSION: ${{ steps.boost_version_info.outputs.BOOST_PATCH_VERSION }}
+          BOOST_URL: ${{ steps.boost_version_info.outputs.BOOST_URL }}
+          BOOST_ARCHIVE_NAME: ${{ steps.boost_version_info.outputs.BOOST_ARCHIVE_NAME }}
+          BOOST_FOLDER_NAME: ${{ steps.boost_version_info.outputs.BOOST_FOLDER_NAME }}
+          BOOST_ARCHIVE_SHA1SUM: ${{ steps.boost_version_info.outputs.BOOST_ARCHIVE_SHA1SUM }}
+          BOOST_ARCHIVE_SHA256SUM: ${{ steps.boost_version_info.outputs.BOOST_ARCHIVE_SHA256SUM }}

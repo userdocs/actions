@@ -1,0 +1,145 @@
+name: ci boost version and download
+description: AN action to get or set a version of boost and set outputs for the foldername, version and download url
+inputs:
+  boost_version:
+    description: "use this specific version via inputs to the action"
+    required: false
+    default: ""
+  download_archive:
+    description: "download the boost version"
+    required: false
+    default: "false"
+  extract_archive:
+    description: "extract the boost tarball"
+    required: false
+    default: "false"
+  working_dir:
+    description: "the directory you want to work in"
+    required: false
+    default: ""
+outputs:
+  BOOST_WORKING_DIR:
+    description: "The working directory"
+    value: ${{ steps.boost_version_info.outputs.BOOST_WORKING_DIR }}
+  BOOST_FOLDER_NAME:
+    description: "The folder name of the boost version when extracted"
+    value: ${{ steps.boost_version_info.outputs.BOOST_FOLDER_NAME }}
+  BOOST_ARCHIVE_NAME:
+    description: "The archive name of the boost version"
+    value: ${{ steps.boost_version_info.outputs.BOOST_ARCHIVE_NAME }}
+  BOOST_URL:
+    description: "The download url of the boost version"
+    value: ${{ steps.boost_version_info.outputs.BOOST_URL }}
+  BOOST_MAJOR_VERSION:
+    description: "The major version of the boost version"
+    value: ${{ steps.boost_version_info.outputs.BOOST_MAJOR_VERSION }}
+  BOOST_MINOR_VERSION:
+    description: "The minor version of the boost version"
+    value: ${{ steps.boost_version_info.outputs.BOOST_MINOR_VERSION }}
+  BOOST_PATCH_VERSION:
+    description: "The patch version of the boost version"
+    value: ${{ steps.boost_version_info.outputs.BOOST_PATCH_VERSION }}
+  BOOST_ARCHIVE_SHA1SUM:
+    description: "The sha1sum of the boost archive"
+    value: ${{ steps.boost_version_info.outputs.BOOST_ARCHIVE_SHA1SUM }}
+  BOOST_ARCHIVE_SHA256SUM:
+    description: "The sha256sum of the boost archive"
+    value: ${{ steps.boost_version_info.outputs.BOOST_ARCHIVE_SHA256SUM }}
+runs:
+  using: "composite"
+  steps:
+    - name: Docker - Bootstrap the boost files
+      env:
+        inputs_boost_version: ${{ inputs.boost_version }}
+        inputs_download_archive: ${{ inputs.download_archive }}
+        inputs_extract_archive: ${{ inputs.extract_archive }}
+        inputs_working_dir: ${{ inputs.working_dir }}
+      shell: sh
+      id: boost_version_info
+      run: |
+        if [ -n "${inputs_working_dir}" ]; then
+          cd "${inputs_working_dir}"
+          printf '%s\n' "BOOST_WORKING_DIR: ${inputs_working_dir}"
+          printf '%s\n' "BOOST_WORKING_DIR=${inputs_working_dir}" >> $GITHUB_OUTPUT
+        fi
+
+        for cmd in "git" "curl" "xz" "sha1sum" "sha256sum"; do
+          if ! command -v "$cmd" > /dev/null 2>&1; then
+            echo "$cmd is not installed. It is required."
+            exit 1
+          fi
+        done
+
+        if [ -n "${inputs_boost_version}" ]; then
+          BOOST_VERSION="${inputs_boost_version}"
+        else
+          BOOST_VERSION="$(git ls-remote -q -t --refs https://github.com/boostorg/boost.git | awk '{sub("refs/tags/boost-", "");sub("(.*)(rc|alpha|beta|-bgl)(.*)", ""); print $2 }' | awk '!/^$/' | sort -rV | head -n1)"
+        fi
+
+        BOOST_VERSION_UNDERSCORES="$(printf '%s\n' "${BOOST_VERSION}" | sed 's/\./_/g')"
+        BOOST_MAJOR_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\1|')"
+        BOOST_MINOR_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\2|')"
+        BOOST_PATCH_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\3|')"
+
+        if curl -sfLIo /dev/null "https://github.com/boostorg/boost/releases/latest/download/boost-${BOOST_VERSION}-b2-nodocs.tar.xz"; then
+          BOOST_URL="https://github.com/boostorg/boost/releases/latest/download/boost-${BOOST_VERSION}-b2-nodocs.tar.xz" && boost_tar_xz="true"
+        elif curl -sfLI o /dev/null "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
+          BOOST_URL="https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"
+        elif curl -sfLI o /dev/null "https://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
+          BOOST_URL="https://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"
+        elif curl -sfLI o /dev/null "https://github.com/userdocs/boost/releases/download/boost-${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
+          BOOST_URL="https://github.com/userdocs/boost/releases/download/boost-${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"
+        else
+          printf '%s\n' "Error: Unable to find a download link for Boost version: ${BOOST_VERSION}"
+          exit 1
+        fi
+
+        if [ "${boost_tar_xz}" = "true" ]; then
+          BOOST_ARCHIVE_NAME="boost-${BOOST_VERSION}.tar.xz"
+          BOOST_FOLDER_NAME="boost-${BOOST_VERSION}"
+        else
+          BOOST_ARCHIVE_NAME="boost-${BOOST_VERSION}.tar.gz"
+          BOOST_FOLDER_NAME="boost_${BOOST_VERSION_UNDERSCORES}"
+        fi
+
+        printf '%s\n' "BOOST_VERSION: ${BOOST_VERSION}"
+        printf '%s\n' "BOOST_VERSION=${BOOST_VERSION}" >> $GITHUB_OUTPUT
+
+        printf '%s\n' "BOOST_MAJOR_VERSION: ${BOOST_MAJOR_VERSION}"
+        printf '%s\n' "BOOST_MAJOR_VERSION=${BOOST_MAJOR_VERSION}" >> $GITHUB_OUTPUT
+
+        printf '%s\n' "BOOST_MINOR_VERSION: ${BOOST_MINOR_VERSION}"
+        printf '%s\n' "BOOST_MINOR_VERSION=${BOOST_MINOR_VERSION}" >> $GITHUB_OUTPUT
+
+        printf '%s\n' "BOOST_PATCH_VERSION: ${BOOST_PATCH_VERSION}"
+        printf '%s\n' "BOOST_PATCH_VERSION=${BOOST_PATCH_VERSION}" >> $GITHUB_OUTPUT
+
+        printf '%s\n' "BOOST_URL: ${BOOST_URL}"
+        printf '%s\n' "BOOST_URL=${BOOST_URL}" >> $GITHUB_OUTPUT
+
+        printf '%s\n' "BOOST_ARCHIVE_NAME: ${BOOST_ARCHIVE_NAME}"
+        printf '%s\n' "BOOST_ARCHIVE_NAME=${BOOST_ARCHIVE_NAME}" >> $GITHUB_OUTPUT
+
+        printf '%s\n' "BOOST_FOLDER_NAME: ${BOOST_FOLDER_NAME}"
+        printf '%s\n' "BOOST_FOLDER_NAME=${BOOST_FOLDER_NAME}" >> $GITHUB_OUTPUT
+
+        if [ "${inputs_download_archive}" = "true" ]; then
+          printf '%s\n' "Downloading ${BOOST_URL} to ${BOOST_ARCHIVE_NAME}"
+          if ! curl -sL "${BOOST_URL}" -o "${BOOST_ARCHIVE_NAME}"; then
+            printf '%s\n' "Error: ${BOOST_URL} did not download."
+          else
+            printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")"
+            printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")" >> $GITHUB_OUTPUT
+            printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")"
+            printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")" >> $GITHUB_OUTPUT
+          fi
+        fi
+
+        if [ "${inputs_extract_archive}" = "true" ]; then
+          if [ -f "${BOOST_ARCHIVE_NAME}" ]; then
+            printf '%s\n' "Extracting ${BOOST_ARCHIVE_NAME} to ${BOOST_FOLDER_NAME}"
+            tar xf "${BOOST_ARCHIVE_NAME}"
+          else
+            printf '%s\n' "Error: ${BOOST_ARCHIVE_NAME} does not exist."
+          fi
+        fi
