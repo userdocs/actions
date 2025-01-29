@@ -86,12 +86,14 @@ with:
   download_archive: true # default false
 ```
 
-extract the archive. use `${{ steps.boost_info.outputs.BOOST_FOLDER_NAME }}` to know the name of this extracted folder.
+extract the archive. use `${{ steps.boost_version_info.outputs.BOOST_FOLDER_NAME }}` to know the name of this extracted folder.
 
 ```yaml
 with:
   extract_archive: true # default false
 ```
+
+Set a working directory to use.
 
 ```yaml
 with:
