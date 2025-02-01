@@ -15,7 +15,7 @@ How to use:
 
 ```yaml
 - name: Docker - Bootstrap the boost files
-  id: boost_info
+  id: boost_version_info
   uses: userdocs/actions/boost@main
   with:
     boost_version: ""

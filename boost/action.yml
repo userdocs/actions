@@ -21,6 +21,12 @@ outputs:
   BOOST_WORKING_DIR:
     description: "The working directory"
     value: ${{ steps.boost_version_info.outputs.BOOST_WORKING_DIR }}
+  BOOST_VERSION:
+    description: "The boost version"
+    value: ${{ steps.boost_version_info.outputs.BOOST_VERSION }}
+  BOOST_GITHUB_TAG:
+    description: "The boost github tag"
+    value: ${{ steps.boost_version_info.outputs.BOOST_GITHUB_TAG }}
   BOOST_FOLDER_NAME:
     description: "The folder name of the boost version when extracted"
     value: ${{ steps.boost_version_info.outputs.BOOST_FOLDER_NAME }}
@@ -65,7 +71,7 @@ runs:
 
         for cmd in "git" "curl" "xz" "sha1sum" "sha256sum"; do
           if ! command -v "$cmd" > /dev/null 2>&1; then
-            echo "$cmd is not installed. It is required."
+            printf '%s\n' "$cmd is not installed. It is required."
             exit 1
           fi
         done
@@ -73,8 +79,19 @@ runs:
         if [ -n "${inputs_boost_version}" ]; then
           BOOST_VERSION="${inputs_boost_version}"
         else
-          BOOST_VERSION="$(git ls-remote -q -t --refs https://github.com/boostorg/boost.git | awk '{sub("refs/tags/boost-", "");sub("(.*)(rc|alpha|beta|-bgl)(.*)", ""); print $2 }' | awk '!/^$/' | sort -rV | head -n1)"
+          BOOST_VERSION_GIT="$(git ls-remote -q -t --refs https://github.com/boostorg/boost.git | awk '{sub("refs/tags/boost-", "");sub("(.*)(rc|alpha|beta|-bgl)(.*)", ""); print $2 }' | awk '!/^$/' | sort -rV | head -n1)"
+          BOOST_VERSION_CURL=$(curl -sLSI -o /dev/null -w "%{url_effective}" "https://github.com/boostorg/boost/releases/latest" | xargs basename | sed 's/^boost-//')
         fi
+
+        if [ "${BOOST_VERSION_GIT}"" = "${BOOST_VERSION_CURL}"" ]; then
+          BOOST_VERSION="${BOOST_VERSION_GIT}"
+        else
+            printf '%s\n' "Error: Boost tag result does not match latest release result."
+            exit 1
+        fi
+
+        printf '%s\n' "BOOST_VERSION_GIT: ${BOOST_VERSION_GIT}"
+        printf '%s\n' "BOOST_VERSION_CURL: ${BOOST_VERSION_CURL}"
 
         BOOST_VERSION_UNDERSCORES="$(printf '%s\n' "${BOOST_VERSION}" | sed 's/\./_/g')"
         BOOST_MAJOR_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\1|')"
@@ -104,6 +121,9 @@ runs:
 
         printf '%s\n' "BOOST_VERSION: ${BOOST_VERSION}"
         printf '%s\n' "BOOST_VERSION=${BOOST_VERSION}" >> $GITHUB_OUTPUT
+
+        printf '%s\n' "BOOST_GITHUB_TAG: boost-${BOOST_VERSION}"
+        printf '%s\n' "BOOST_GITHUB_TAG=boost-${BOOST_VERSION}" >> $GITHUB_OUTPUT
 
         printf '%s\n' "BOOST_MAJOR_VERSION: ${BOOST_MAJOR_VERSION}"
         printf '%s\n' "BOOST_MAJOR_VERSION=${BOOST_MAJOR_VERSION}" >> $GITHUB_OUTPUT
