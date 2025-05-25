@@ -1,0 +1,87 @@
+name: ci host - qbt bootstrap docker container
+description: An action to install qemu user static for cross-compilation via apt on the host runner.
+inputs:
+  distinct_id:
+    description: "Distinct id"
+    required: false
+  use_host_env:
+    description: "Use host env"
+    required: false
+    default: "false"
+  container_name:
+    description: "Multiarch container name"
+    required: true
+  os_id:
+    description: "Operating system id"
+    required: true
+  os_version_id:
+    description: "Operating system version id"
+    required: true
+  custom_commands:
+    description: "Custom commands (space-separated)"
+    required: false
+    default: ""
+  additional_alpine_apps:
+    description: "Additional Alpine applications to install (space-separated)"
+    required: false
+    default: ""
+  additional_debian_apps:
+    description: "Additional Debian/Ubuntu applications to install (space-separated)"
+    required: false
+    default: ""
+runs:
+  using: "composite"
+  steps:
+    - name: Host - Dump Github env to container env ${{ inputs.distinct_id }}
+      if: inputs.use_host_env == 'true'
+      shell: sh
+      run: env >> env.custom
+
+    - name: Host - Create docker ${{ inputs.container_name }} container ${{ inputs.distinct_id }}
+      env:
+        inputs_container_name: ${{ inputs.container_name }}
+        inputs_os_id: ${{ inputs.os_id }}
+        inputs_os_version_id: ${{ inputs.os_version_id }}
+        inputs_custom_commands: ${{ inputs.custom_commands }}
+        inputs_additional_alpine_apps: ${{ inputs.additional_alpine_apps }}
+        inputs_additional_debian_apps: ${{ inputs.additional_debian_apps }}
+      shell: sh
+      if: inputs.os_id != ''
+      run: |
+        # We create an container for cross-compilation with a user named gh which has same id as runner 1001 and provide sudo access
+
+        # Build docker command with conditional env-file
+        docker_cmd="docker run --name ${inputs_container_name} -it -d"
+
+        # Only add env-file if file exists
+        if [ -f env.custom ]; then
+          docker_cmd="$docker_cmd --env-file env.custom"
+        fi
+
+        # Only add LANG if OS is debian/ubuntu
+        if [ "$inputs_os_id" = "debian" ] || [ "$inputs_os_id" = "ubuntu" ]; then
+          docker_cmd="$docker_cmd -e LANG=C.UTF-8"
+        fi
+
+        docker_cmd="$docker_cmd -w /home/gh -v ${{ github.workspace }}:/home/gh ${inputs_custom_commands} ${inputs_os_id}:${inputs_os_version_id}"
+
+        # Execute the docker command
+        eval $docker_cmd
+
+        # Create the user gh with the id 1001:1001 which is the same as the runner user id and group id.
+        if [ "$inputs_os_id" = 'alpine' ]; then
+          docker exec ${inputs_container_name} sh -c 'adduser -h /home/gh -Ds /bin/bash -u 1001 gh'
+          docker exec ${inputs_container_name} sh -c 'apk update'
+          docker exec ${inputs_container_name} sh -c "apk add sudo bash ${inputs_additional_alpine_apps}"
+          docker exec ${inputs_container_name} sh -c 'apk upgrade'
+        fi
+
+        if [ "$inputs_os_id" = "debian" ] || [ "$inputs_os_id" = "ubuntu" ]; then
+          docker exec ${inputs_container_name} sh -c 'useradd -ms /bin/bash -u 1001 gh'
+          docker exec ${inputs_container_name} sh -c 'apt-get update'
+          docker exec ${inputs_container_name} sh -c "apt-get install -y sudo ${inputs_additional_debian_apps}"
+          docker exec ${inputs_container_name} sh -c 'apt-get upgrade -y'
+        fi
+
+        # Allow the user gh to run sudo without password prompt: docker exec -u gh:gh ${inputs_container_name} sudo ls
+        docker exec ${inputs_container_name} sh -c 'printf "%s" "gh ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gh'

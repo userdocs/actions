@@ -1,0 +1,12 @@
+name: ci host - qemu user static install
+description: An action to install qemu user static for cross-compilation via apt on the host runner.
+runs:
+  using: "composite"
+  steps:
+    - name: Update apt cache
+      shell: sh
+      run: sudo apt-get update
+
+    - name: Install qemu user static
+      shell: sh
+      run: sudo apt-get install -y libpipeline1 qemu-user-static binfmt-support
