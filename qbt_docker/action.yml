@@ -17,7 +17,7 @@ inputs:
   os_version_id:
     description: "Operating system version id"
     required: true
-  custom_commands:
+  custom_docker_commands:
     description: "Custom commands (space-separated)"
     required: false
     default: ""
@@ -42,7 +42,7 @@ runs:
         inputs_container_name: ${{ inputs.container_name }}
         inputs_os_id: ${{ inputs.os_id }}
         inputs_os_version_id: ${{ inputs.os_version_id }}
-        inputs_custom_commands: ${{ inputs.custom_commands }}
+        inputs_custom_docker_commands: ${{ inputs.custom_docker_commands }}
         inputs_additional_alpine_apps: ${{ inputs.additional_alpine_apps }}
         inputs_additional_debian_apps: ${{ inputs.additional_debian_apps }}
       shell: sh
@@ -63,7 +63,7 @@ runs:
           docker_cmd="$docker_cmd -e LANG=C.UTF-8"
         fi
 
-        docker_cmd="$docker_cmd -w /home/gh -v ${{ github.workspace }}:/home/gh ${inputs_custom_commands} ${inputs_os_id}:${inputs_os_version_id}"
+        docker_cmd="$docker_cmd -w /home/gh -v ${{ github.workspace }}:/home/gh ${inputs_custom_docker_commands} ${inputs_os_id}:${inputs_os_version_id}"
 
         # Execute the docker command
         eval $docker_cmd
