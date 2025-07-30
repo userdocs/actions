@@ -76,9 +76,9 @@ runs:
         # Create the user gh with the id 1001:1001 which is the same as the runner user id and group id.
         if [ "$inputs_os_id" = 'alpine' ]; then
           docker exec ${inputs_container_name} sh -c 'adduser -h /home/gh -Ds /bin/bash -u 1001 gh'
-          docker exec ${inputs_container_name} sh -c 'apk update'
-          docker exec ${inputs_container_name} sh -c "apk add sudo bash ${inputs_additional_alpine_apps}"
-          docker exec ${inputs_container_name} sh -c 'apk upgrade'
+          docker exec ${inputs_container_name} sh -c 'apk update --no-cache'
+          docker exec ${inputs_container_name} sh -c "apk add -u --no-cache sudo bash ${inputs_additional_alpine_apps} "
+          docker exec ${inputs_container_name} sh -c 'apk upgrade --no-cache'
         fi
 
         if [ "$inputs_os_id" = "debian" ] || [ "$inputs_os_id" = "ubuntu" ]; then
