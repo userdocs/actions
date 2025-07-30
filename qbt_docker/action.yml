@@ -29,6 +29,10 @@ inputs:
     description: "Additional Debian/Ubuntu applications to install (space-separated)"
     required: false
     default: ""
+outputs:
+  container_info:
+    description: "The name provided for the container"
+    value: ${{ steps.container_info.outputs.container_name }}
 runs:
   using: "composite"
   steps:
@@ -38,6 +42,7 @@ runs:
       run: env >> env.custom
 
     - name: Host - Create docker ${{ inputs.container_name }} container ${{ inputs.distinct_id }}
+      id: container_info
       env:
         inputs_container_name: ${{ inputs.container_name }}
         inputs_os_id: ${{ inputs.os_id }}
@@ -85,3 +90,5 @@ runs:
 
         # Allow the user gh to run sudo without password prompt: docker exec -u gh:gh ${inputs_container_name} sudo ls
         docker exec ${inputs_container_name} sh -c 'printf "%s" "gh ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gh'
+
+        printf '%b\n' "container_name=${inputs_container_name}" >> $GITHUB_OUTPUT
