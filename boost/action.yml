@@ -98,8 +98,8 @@ runs:
         BOOST_MINOR_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\2|')"
         BOOST_PATCH_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\3|')"
 
-        if curl -sfLIo /dev/null "https://github.com/boostorg/boost/releases/latest/download/boost-${BOOST_VERSION}-b2-nodocs.tar.xz"; then
-          BOOST_URL="https://github.com/boostorg/boost/releases/latest/download/boost-${BOOST_VERSION}-b2-nodocs.tar.xz" && boost_tar_xz="true"
+        if curl -sfLIo /dev/null "https://github.com/boostorg/boost/releases/download/boost-${boost_version}/boost-${boost_version}-b2-nodocs.tar.xz"; then
+          BOOST_URL="https://github.com/boostorg/boost/releases/download/boost-${boost_version}/boost-${boost_version}-b2-nodocs.tar.xz" && boost_tar_xz="true"
         elif curl -sfLI o /dev/null "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
           BOOST_URL="https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"
         elif curl -sfLI o /dev/null "https://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
