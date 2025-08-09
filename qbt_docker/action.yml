@@ -63,10 +63,12 @@ runs:
           docker_cmd="$docker_cmd --env-file env.custom"
         fi
 
-        # Only add LANG if OS is debian/ubuntu
-        if [ "$inputs_os_id" = "debian" ] || [ "$inputs_os_id" = "ubuntu" ]; then
-          docker_cmd="$docker_cmd -e LANG=C.UTF-8"
-        fi
+        # Only add LANG if OS is debian/ubuntu (supports repo-qualified names like something/debian)
+        case "$inputs_os_id" in
+          debian|*/debian|ubuntu|*/ubuntu)
+            docker_cmd="$docker_cmd -e LANG=C.UTF-8"
+            ;;
+        esac
 
         docker_cmd="$docker_cmd -w /home/gh -v ${{ github.workspace }}:/home/gh ${inputs_custom_docker_commands} ${inputs_os_id}:${inputs_os_version_id}"
 
@@ -74,19 +76,23 @@ runs:
         eval $docker_cmd
 
         # Create the user gh with the id 1001:1001 which is the same as the runner user id and group id.
-        if [ "$inputs_os_id" = 'alpine' ]; then
-          docker exec ${inputs_container_name} sh -c 'adduser -h /home/gh -Ds /bin/bash -u 1001 gh'
-          docker exec ${inputs_container_name} sh -c 'apk update --no-cache'
-          docker exec ${inputs_container_name} sh -c "apk add -u --no-cache sudo bash ${inputs_additional_alpine_apps} "
-          docker exec ${inputs_container_name} sh -c 'apk upgrade --no-cache'
-        fi
+        case "$inputs_os_id" in
+          alpine|*/alpine)
+            docker exec ${inputs_container_name} sh -c 'adduser -h /home/gh -Ds /bin/bash -u 1001 gh'
+            docker exec ${inputs_container_name} sh -c 'apk update --no-cache'
+            docker exec ${inputs_container_name} sh -c "apk add -u --no-cache sudo bash ${inputs_additional_alpine_apps}"
+            docker exec ${inputs_container_name} sh -c 'apk upgrade --no-cache'
+            ;;
+        esac
 
-        if [ "$inputs_os_id" = "debian" ] || [ "$inputs_os_id" = "ubuntu" ]; then
-          docker exec ${inputs_container_name} sh -c 'useradd -ms /bin/bash -u 1001 gh'
-          docker exec ${inputs_container_name} sh -c 'apt-get update'
-          docker exec ${inputs_container_name} sh -c "apt-get install -y sudo ${inputs_additional_debian_apps}"
-          docker exec ${inputs_container_name} sh -c 'apt-get upgrade -y'
-        fi
+        case "$inputs_os_id" in
+          debian|*/debian|ubuntu|*/ubuntu)
+            docker exec ${inputs_container_name} sh -c 'useradd -ms /bin/bash -u 1001 gh'
+            docker exec ${inputs_container_name} sh -c 'apt-get update'
+            docker exec ${inputs_container_name} sh -c "apt-get install -y sudo ${inputs_additional_debian_apps}"
+            docker exec ${inputs_container_name} sh -c 'apt-get upgrade -y'
+            ;;
+        esac
 
         # Allow the user gh to run sudo without password prompt: docker exec -u gh:gh ${inputs_container_name} sudo ls
         docker exec ${inputs_container_name} sh -c 'printf "%s" "gh ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gh'
