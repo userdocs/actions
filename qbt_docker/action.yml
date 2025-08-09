@@ -94,7 +94,11 @@ runs:
             ;;
         esac
 
-        # Allow the user gh to run sudo without password prompt: docker exec -u gh:gh ${inputs_container_name} sudo ls
-        docker exec ${inputs_container_name} sh -c 'printf "%s" "gh ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gh'
+        case "$inputs_os_id" in
+          alpine|*/alpine|debian|*/debian|ubuntu|*/ubuntu)
+            # Allow the user gh to run sudo without password prompt: docker exec -u gh:gh ${inputs_container_name} sudo ls
+            docker exec ${inputs_container_name} sh -c 'printf "%s" "gh ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gh'
+            ;;
+        esac
 
         printf '%b\n' "container_name=${inputs_container_name}" >> $GITHUB_OUTPUT
