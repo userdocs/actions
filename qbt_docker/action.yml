@@ -29,6 +29,14 @@ inputs:
     description: "Additional Debian/Ubuntu applications to install (space-separated)"
     required: false
     default: ""
+  uid:
+    description: "Set the user id"
+    required: false
+    default: "gh"
+  gid:
+    description: "Set the user group"
+    required: false
+    default: "1001"
 outputs:
   container_info:
     description: "The name provided for the container"
@@ -50,10 +58,12 @@ runs:
         inputs_custom_docker_commands: ${{ inputs.custom_docker_commands }}
         inputs_additional_alpine_apps: ${{ inputs.additional_alpine_apps }}
         inputs_additional_debian_apps: ${{ inputs.additional_debian_apps }}
+        inputs_uid: ${{ inputs.uid }}
+        inputs_gid: ${{ inputs.gid }}
       shell: sh
       if: inputs.os_id != ''
       run: |
-        # We create an container for cross-compilation with a user named gh which has same id as runner 1001 and provide sudo access
+        # We create an container for cross-compilation with a user named gh which has same id as runner ${inputs_gid} and provide sudo access
 
         # Build docker command with conditional env-file
         docker_cmd="docker run --name ${inputs_container_name} -it -d"
@@ -70,34 +80,34 @@ runs:
             ;;
         esac
 
-        docker_cmd="$docker_cmd -w /home/gh -v ${{ github.workspace }}:/home/gh ${inputs_custom_docker_commands} ${inputs_os_id}:${inputs_os_version_id}"
+        docker_cmd="$docker_cmd -w /home/${inputs_uid} -v ${{ github.workspace }}:/home/${inputs_uid} ${inputs_custom_docker_commands} ${inputs_os_id}:${inputs_os_version_id}"
 
         # Execute the docker command
         eval $docker_cmd
 
-        # Create the user gh with the id 1001:1001 which is the same as the runner user id and group id.
+        # Create the user ${inputs_uid} with the id ${inputs_gid}:${inputs_gid} which is the same as the runner user id and group id.
         case "$inputs_os_id" in
           alpine|*/alpine)
-            docker exec ${inputs_container_name} sh -c 'adduser -h /home/gh -Ds /bin/bash -u 1001 gh'
-            docker exec ${inputs_container_name} sh -c 'apk update --no-cache'
+            docker exec ${inputs_container_name} sh -c "adduser -h /home/${inputs_uid} -Ds /bin/bash -u ${inputs_gid} ${inputs_uid}"
+            docker exec ${inputs_container_name} sh -c "apk update --no-cache"
             docker exec ${inputs_container_name} sh -c "apk add -u --no-cache sudo bash ${inputs_additional_alpine_apps}"
-            docker exec ${inputs_container_name} sh -c 'apk upgrade --no-cache'
+            docker exec ${inputs_container_name} sh -c "apk upgrade --no-cache"
             ;;
         esac
 
         case "$inputs_os_id" in
           debian|*/debian|ubuntu|*/ubuntu)
-            docker exec ${inputs_container_name} sh -c 'useradd -ms /bin/bash -u 1001 gh'
-            docker exec ${inputs_container_name} sh -c 'apt-get update'
+            docker exec ${inputs_container_name} sh -c "useradd -ms /bin/bash -u ${inputs_gid} ${inputs_uid}"
+            docker exec ${inputs_container_name} sh -c "apt-get update"
             docker exec ${inputs_container_name} sh -c "apt-get install -y sudo ${inputs_additional_debian_apps}"
-            docker exec ${inputs_container_name} sh -c 'apt-get upgrade -y'
+            docker exec ${inputs_container_name} sh -c "apt-get upgrade -y"
             ;;
         esac
 
         case "$inputs_os_id" in
           alpine|*/alpine|debian|*/debian|ubuntu|*/ubuntu)
-            # Allow the user gh to run sudo without password prompt: docker exec -u gh:gh ${inputs_container_name} sudo ls
-            docker exec ${inputs_container_name} sh -c 'printf "%s" "gh ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/gh'
+            # Allow the user ${inputs_uid} to run sudo without password prompt: docker exec -u ${inputs_uid}:${inputs_uid} ${inputs_container_name} sudo ls
+            docker exec ${inputs_container_name} sh -c 'printf "%s" "'"${inputs_uid}"' ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/'"${inputs_uid}"''
             ;;
         esac
 
