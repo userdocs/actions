@@ -1,114 +1,403 @@
-name: ci host - qbt bootstrap docker container
-description: An action to install qemu user static for cross-compilation via apt on the host runner.
+name: Docker Container Builder
+description: Creates and configures Docker containers for CI/CD workflows with cross-platform support and user management.
 inputs:
   distinct_id:
-    description: "Distinct id"
+    description: "Unique identifier for the container instance"
     required: false
+    default: ""
+  dockerfile:
+    description: "Use a provided dockerfile name or url"
+    required: false
+    default: ""
   use_host_env:
-    description: "Use host env"
+    description: "Include host environment variables in container"
     required: false
     default: "false"
-  container_name:
-    description: "Multiarch container name"
-    required: true
+  use_root:
+    description: "Use root 0:0 for the image user instead of gh 1001:1001"
+    required: false
+    default: "false"
   os_id:
-    description: "Operating system id"
-    required: true
+    description: "Docker image name/OS identifier (e.g., alpine, ubuntu, debian)"
+    required: false
+    default: "alpine"
   os_version_id:
-    description: "Operating system version id"
-    required: true
+    description: "Docker image tag/OS version (e.g., edge, latest, 22.04)"
+    required: false
+    default: "edge"
   custom_docker_commands:
-    description: "Custom commands (space-separated)"
+    description: "Additional Docker run arguments (space-separated)"
     required: false
     default: ""
   additional_alpine_apps:
-    description: "Additional Alpine applications to install (space-separated)"
+    description: "Extra Alpine packages to install (space-separated)"
     required: false
     default: ""
   additional_debian_apps:
-    description: "Additional Debian/Ubuntu applications to install (space-separated)"
+    description: "Extra Debian/Ubuntu packages to install (space-separated)"
     required: false
     default: ""
-  uid:
-    description: "Set the user id"
-    required: false
-    default: "gh"
-  gid:
-    description: "Set the user group"
-    required: false
-    default: "1001"
 outputs:
-  container_info:
-    description: "The name provided for the container"
-    value: ${{ steps.container_info.outputs.container_name }}
+  container_name:
+    description: "The name of the created container"
+    value: ${{ steps.docker_outputs.outputs.container_name }}
+  uid:
+    description: "The user ID used in the container"
+    value: ${{ steps.docker_outputs.outputs.uid }}
+  wd:
+    description: "The working directory in the container"
+    value: ${{ steps.docker_outputs.outputs.wd }}
 runs:
   using: "composite"
   steps:
-    - name: Host - Dump Github env to container env ${{ inputs.distinct_id }}
-      if: inputs.use_host_env == 'true'
-      shell: sh
-      run: env >> env.custom
-
-    - name: Host - Create docker ${{ inputs.container_name }} container ${{ inputs.distinct_id }}
-      id: container_info
+    - name: Host - Create docker ${{ inputs.container_name || 'builder' }} container ${{ inputs.distinct_id }}
+      id: docker_outputs
       env:
-        inputs_container_name: ${{ inputs.container_name }}
+        inputs_dockerfile: ${{ inputs.dockerfile }}
+        inputs_use_host_env: ${{ inputs.use_host_env }}
+        inputs_use_root: ${{ inputs.use_root }}
         inputs_os_id: ${{ inputs.os_id }}
         inputs_os_version_id: ${{ inputs.os_version_id }}
-        inputs_custom_docker_commands: ${{ inputs.custom_docker_commands }}
+        inputs_custom_docker_commands: ${{ inputs.custom_docker_commands}}
         inputs_additional_alpine_apps: ${{ inputs.additional_alpine_apps }}
         inputs_additional_debian_apps: ${{ inputs.additional_debian_apps }}
-        inputs_uid: ${{ inputs.uid }}
-        inputs_gid: ${{ inputs.gid }}
-      shell: sh
-      if: inputs.os_id != ''
+        workspace: ${{ github.workspace }}
+      shell: bash
       run: |
-        # We create an container for cross-compilation with a user named gh which has same id as runner ${inputs_gid} and provide sudo access
+        # Functions for consistent logging
+        log_info() {
+          printf '[INFO] %s\n' "$1"
+        }
 
-        # Build docker command with conditional env-file
-        docker_cmd="docker run --name ${inputs_container_name} -it -d"
+        log_error() {
+          printf '[ERROR] %s\n' "$1" >&2
+        }
 
-        # Only add env-file if file exists
-        if [ -f env.custom ]; then
-          docker_cmd="$docker_cmd --env-file env.custom"
+        log_debug() {
+          printf '[DEBUG] %s\n' "$1"
+        }
+
+        # Set the vars for log summaries.
+        if [[ $inputs_use_root == "true" ]]; then
+          username="root"
+          username_uid="0"
+          username_gid="0"
+        else
+          username="gh"
+          username_uid="1001"
+          username_gid="1001"
         fi
 
-        # Only add LANG if OS is debian/ubuntu (supports repo-qualified names like something/debian)
-        case "$inputs_os_id" in
-          debian|*/debian|ubuntu|*/ubuntu)
-            docker_cmd="$docker_cmd -e LANG=C.UTF-8"
-            ;;
-        esac
+        _inputs_info() {
+          printf '%b\n' "\`\`\`bash\n"
+          log_debug "Input info:"
+          log_debug "inputs_dockerfile=\"${inputs_dockerfile}\""
+          log_debug "inputs_use_host_env=\"${inputs_use_host_env}\""
+          log_debug "env_custom=\"${env_custom:-none}\""
+          log_debug "inputs_use_root=\"${inputs_use_root}\""
+          log_debug 'container_name="qbt_builder"'
+          log_debug "inputs_os_id=\"${inputs_os_id}\""
+          log_debug "inputs_os_version_id=\"${inputs_os_version_id}\""
+          log_debug "inputs_custom_docker_commands=\"${inputs_custom_docker_commands}\""
+          log_debug "inputs_additional_debian_apps=\"${inputs_additional_debian_apps}\""
+          log_debug "inputs_additional_alpine_apps=\"${inputs_additional_alpine_apps}\""
+          log_debug "workspace=\"${workspace}\""
+          log_debug "docker_command=\"${docker_command[*]}\""
+          log_debug "wd=\"${wd}\""
 
-        docker_cmd="$docker_cmd -w /home/${inputs_uid} -v ${{ github.workspace }}:/home/${inputs_uid} ${inputs_custom_docker_commands} ${inputs_os_id}:${inputs_os_version_id}"
+          log_debug "env/output info: These are set to github env/outputs and cannot be changed or manipulated by inputs"
 
-        # Execute the docker command
-        eval $docker_cmd
+          log_debug "container_name=qbt_builder"
+          log_debug "username=$username"
+          log_debug "username_uid=$username_uid"
+          log_debug "username_gid=$username_gid"
+          log_debug "wd=$wd"
+          printf '%b\n' '```'
+        }
 
-        # Create the user ${inputs_uid} with the id ${inputs_gid}:${inputs_gid} which is the same as the runner user id and group id.
-        case "$inputs_os_id" in
-          alpine|*/alpine)
-            docker exec ${inputs_container_name} sh -c "adduser -h /home/${inputs_uid} -Ds /bin/bash -u ${inputs_gid} ${inputs_uid}"
-            docker exec ${inputs_container_name} sh -c "apk update --no-cache"
-            docker exec ${inputs_container_name} sh -c "apk add -u --no-cache sudo bash ${inputs_additional_alpine_apps}"
-            docker exec ${inputs_container_name} sh -c "apk upgrade --no-cache"
-            ;;
-        esac
+        # These are set to github env/outputs and cannot be changed or manipulated by inputs"
 
-        case "$inputs_os_id" in
-          debian|*/debian|ubuntu|*/ubuntu)
-            docker exec ${inputs_container_name} sh -c "useradd -ms /bin/bash -u ${inputs_gid} ${inputs_uid}"
-            docker exec ${inputs_container_name} sh -c "apt-get update"
-            docker exec ${inputs_container_name} sh -c "apt-get install -y sudo ${inputs_additional_debian_apps}"
-            docker exec ${inputs_container_name} sh -c "apt-get upgrade -y"
-            ;;
-        esac
+        _env_info() {
+          printf '%s\n' "container_name=qbt_builder" >> "$GITHUB_ENV"
+          printf '%s\n' "wd=$wd" >> "$GITHUB_ENV"
+        }
 
-        case "$inputs_os_id" in
-          alpine|*/alpine|debian|*/debian|ubuntu|*/ubuntu)
-            # Allow the user ${inputs_uid} to run sudo without password prompt: docker exec -u ${inputs_uid}:${inputs_uid} ${inputs_container_name} sudo ls
-            docker exec ${inputs_container_name} sh -c 'printf "%s" "'"${inputs_uid}"' ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/'"${inputs_uid}"''
-            ;;
-        esac
+        # start creating our base docker command
+        docker_command=("run" "-it" "-d" "--name" "qbt_builder")
 
-        printf '%b\n' "container_name=${inputs_container_name}" >> $GITHUB_OUTPUT
+        # Parse the custom docker commands string into an array
+        read -ra inputs_custom_docker_commands_array <<< "$inputs_custom_docker_commands"
+
+        if [[ $inputs_use_host_env == 'true' ]]; then
+          env > "${workspace}/env.host"
+        fi
+
+        if [[ -f "${workspace}/env.host" && -f "${workspace}/env.custom" ]]; then
+          cat "${workspace}/env.host" "${workspace}/env.custom" > "${workspace}/env.load"
+          env_custom="host + custom"
+        elif [[ -f "${workspace}/env.host" && ! -f "${workspace}/env.custom" ]]; then
+          cat "${workspace}/env.host" > "${workspace}/env.load"
+          env_custom="host only"
+        elif [[ ! -f "${workspace}/env.host" && -f "${workspace}/env.custom" ]]; then
+          cat "${workspace}/env.custom" > "${workspace}/env.load"
+          env_custom="custom only"
+        else
+          env_custom="none"
+        fi
+
+        # Only add env-file if merged file exists
+        if [[ -f "${workspace}/env.load" ]]; then
+          docker_command+=("--env-file" "${workspace}/env.load")
+        fi
+
+        ###
+        ### Fast-path: if the user supplied a Dockerfile, ignore other inputs except env related
+        ###
+
+        if [[ -n $inputs_dockerfile ]]; then
+          dockerfile_path="${workspace}/qbt_builder_dockerfile"
+          log_info "Fast-path: using provided Dockerfile: $inputs_dockerfile"
+
+          case "$inputs_dockerfile" in
+            http://* | https://*)
+              log_info "Downloading Dockerfile from URL: $inputs_dockerfile"
+              curl -fsSL "$inputs_dockerfile" -o "$dockerfile_path" || {
+                log_error "Failed to download Dockerfile from $inputs_dockerfile"
+                exit 1
+              }
+              ;;
+            *)
+              if [[ -f $inputs_dockerfile ]]; then
+                cp "$inputs_dockerfile" "$dockerfile_path" || {
+                  log_error "Failed to copy Dockerfile from $inputs_dockerfile to $dockerfile_path"
+                  exit 1
+                }
+              elif [[ -f "$workspace/$inputs_dockerfile" ]]; then
+                cp "$workspace/$inputs_dockerfile" "$dockerfile_path" || {
+                  log_error "Failed to copy Dockerfile from $workspace/$inputs_dockerfile to $dockerfile_path"
+                  exit 1
+                }
+              else
+                log_error "Dockerfile not found at '$inputs_dockerfile' or '$workspace/$inputs_dockerfile'"
+                exit 1
+              fi
+              ;;
+          esac
+
+          if [[ ! -s $dockerfile_path ]]; then
+            log_error "Dockerfile is empty or missing after fetch: $dockerfile_path"
+            exit 1
+          fi
+
+          # Write Dockerfile to the step summary for visibility
+          log_info "Using Dockerfile: $dockerfile_path" | tee -a "$GITHUB_STEP_SUMMARY"
+          {
+            printf '%b\n' "\`\`\`bash\n"
+            cat "$dockerfile_path"
+            printf '%b\n' '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # Build with a simple predictable tag
+          custom_image_tag="custom_dockerfile"
+
+          log_info "Building image from provided Dockerfile as: $custom_image_tag"
+          docker build -f "$dockerfile_path" -t "$custom_image_tag" . || {
+            log_error "Failed to build Docker image from provided Dockerfile"
+            # Clean up Dockerfile if left behind
+            rm -f "$dockerfile_path"
+            exit 1
+          }
+
+          docker_command+=("$custom_image_tag")
+
+          # Start a container (detached) from the built image so it's running like a daemon.
+          log_info "Starting container from image '$custom_image_tag' as 'qbt_builder' (detached)"
+          docker "${docker_command[@]}" || {
+            log_error "Failed to start container from image $custom_image_tag"
+            rm -f "$dockerfile_path"
+            exit 1
+          }
+
+          # if the dockerfile has a WORKDIR set grab the path and set it to wd or we have no idea what it is.
+          wd="$(sed -rn 's/WORKDIR (.*)/\1/p' "$dockerfile_path")"
+
+          # Clean up the temporary Dockerfile and emit minimal outputs
+          rm -f "$dockerfile_path"
+
+          log_debug "custom_image_tag=$custom_image_tag"
+
+          _inputs_info | tee -a "$GITHUB_STEP_SUMMARY"
+          _env_info
+
+          exit 0
+        fi
+
+        ###
+        ### Fast-path: ends Here
+        ###
+
+        # Add user specification based on image type
+        if [[ $inputs_os_id == ghcr.io/userdocs/* ]]; then
+          if [[ $inputs_use_root == "false" ]]; then
+            docker_command+=("-u" "1001:1001")
+          fi
+        fi
+
+        if [[ $inputs_use_root == "true" ]]; then
+          docker_command+=("-w" "/root")
+        else
+          docker_command+=("-w" "/home/gh")
+        fi
+
+        docker_command+=("-v" "$workspace:/root")
+
+        if [[ $inputs_os_id == ghcr.io/userdocs/* ]]; then
+          docker_command+=(
+            "-v" "$workspace:/home/gh"
+            "-v" "$workspace:/home/github"
+            "-v" "$workspace:/home/username"
+          )
+        fi
+
+        if [[ $inputs_os_id != ghcr.io/userdocs/* ]]; then
+          docker_command+=(
+            "-v" "$workspace:/home/gh"
+          )
+        fi
+
+        docker_command+=(
+          "${inputs_custom_docker_commands_array[@]}"
+        )
+
+        # Determine user setup for non-userdocs images
+        if [[ $inputs_os_id != ghcr.io/userdocs/* ]]; then
+          # Create Dockerfile and build image with user setup
+          dockerfile_path="${workspace}/qbt_builder_dockerfile"
+          custom_image_tag="qbt_builder"
+
+          case "$inputs_os_id" in
+            alpine | */alpine)
+              log_info "Creating Alpine Linux Dockerfile"
+              printf '%b\n' "\`\`\`bash\n" >> "$GITHUB_STEP_SUMMARY"
+              {
+                # Avoid heredoc (EOF) which can break in some CI environments (GitHub Actions).
+                # Build the Dockerfile lines in an array, use a single printf to print them.
+                backslash=$'\\'
+                df_lines=(
+                  "FROM ${inputs_os_id}:${inputs_os_version_id}"
+                  ""
+                  "# Create group and user"
+                  "RUN addgroup -g 1001 gh 2>/dev/null || true && ${backslash}"
+                  "    adduser -h /home/gh -Ds /bin/bash -u 1001 -G 1001 gh"
+                  ""
+                  "# Update packages and install dependencies"
+                  "RUN apk update --no-cache && ${backslash}"
+                  "    apk add -lu --no-cache sudo bash ${inputs_additional_alpine_apps} && ${backslash}"
+                  "    apk upgrade -l --no-cache"
+                  ""
+                  "# Configure sudo access"
+                  "RUN umask 077 && ${backslash}"
+                  "    printf '%s\\n' \"gh ALL=(ALL) NOPASSWD: ALL\" > /etc/sudoers.d/gh && ${backslash}"
+                  "    chmod 0440 /etc/sudoers.d/gh"
+                )
+                printf '%s\n' "${df_lines[@]}"
+              } | tee "$dockerfile_path" | tee -a "$GITHUB_STEP_SUMMARY"
+              printf '%b\n' '```' >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            debian | */debian | ubuntu | */ubuntu)
+              log_info "Creating Debian/Ubuntu Dockerfile"
+              printf '%b\n' "\`\`\`bash\n" >> "$GITHUB_STEP_SUMMARY"
+              {
+                backslash=$'\\'
+                df_lines=(
+                  "FROM ${inputs_os_id}:${inputs_os_version_id}"
+                  ""
+                  "# Locale env settings"
+                  "ENV LANG=C.UTF-8"
+                  "ENV DEBIAN_FRONTEND=noninteractive"
+                  "ENV TZ=Europe/London"
+                  ""
+                  "# Create group and user"
+                  "RUN groupadd -g 1001 gh 2>/dev/null || true && ${backslash}"
+                  "    useradd -ms /bin/bash -u 1001 -g 1001 gh"
+                  ""
+                  "# Update packages and install dependencies"
+                  "RUN apt-get update && apt-get upgrade -y"
+                  ""
+                  "# Install additional packages and sudo"
+                  "RUN apt-get install -y sudo ${inputs_additional_debian_apps}"
+                  ""
+                  "# Configure sudo access"
+                  "RUN umask 077 && ${backslash}"
+                  "    printf '%s\\n' \"gh ALL=(ALL) NOPASSWD: ALL\" > /etc/sudoers.d/gh && ${backslash}"
+                  "    chmod 0440 /etc/sudoers.d/gh"
+                )
+                printf '%s\n' "${df_lines[@]}"
+              } | tee "$dockerfile_path" | tee -a "$GITHUB_STEP_SUMMARY"
+              printf '%b\n' '```' >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              log_info "Creating basic Dockerfile for unsupported OS: $inputs_os_id"
+              printf '%b\n' "\`\`\`bash\n" >> "$GITHUB_STEP_SUMMARY"
+              {
+                backslash=$'\\'
+                df_lines=(
+                  "FROM ${inputs_os_id}:${inputs_os_version_id}"
+                  ""
+                  "# Locale env settings"
+                  "ENV LANG=C.UTF-8"
+                  "ENV DEBIAN_FRONTEND=noninteractive"
+                  "ENV TZ=Europe/London"
+                  ""
+                  "# Create group and user (basic fallback)"
+                  "RUN groupadd 1001 2>/dev/null || addgroup 1001 2>/dev/null || true && ${backslash}"
+                  "    useradd -ms /bin/bash -u 1001 gh 2>/dev/null || adduser -h /home/gh -Ds /bin/bash -u 1001 gh 2>/dev/null || true"
+                  ""
+                  "# Configure sudo access if sudo exists"
+                  "RUN if command -v sudo >/dev/null 2>&1; then ${backslash}"
+                  "        umask 077 && ${backslash}"
+                  "        printf '%s\\n' \"gh ALL=(ALL) NOPASSWD: ALL\" > /etc/sudoers.d/gh && ${backslash}"
+                  "        chmod 0440 /etc/sudoers.d/gh; ${backslash}"
+                  "    fi"
+                )
+                printf '%s\n' "${df_lines[@]}"
+              } | tee "$dockerfile_path" | tee -a "$GITHUB_STEP_SUMMARY"
+              printf '%b\n' '```' >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
+
+          # Build the custom image with user setup
+          log_info "Building container image with user setup"
+          docker build -f "$dockerfile_path" -t "$custom_image_tag" . || {
+            log_error "Failed to build Docker image"
+            exit 1
+          }
+
+          # Clean up the Dockerfile
+          rm -f "$dockerfile_path"
+
+          # Use the custom image and configure user for container run
+          if [[ $inputs_use_root == "false" ]]; then
+            docker_command+=("-u" "1001:1001")
+          fi
+
+          docker_command+=("$custom_image_tag")
+        else
+          # For userdocs images, use original image
+          docker_command+=("${inputs_os_id}:${inputs_os_version_id}")
+        fi
+
+        docker "${docker_command[@]}" || {
+          log_error "Failed to create Docker container with command: ${docker_command[*]}"
+          exit 1
+        }
+
+        for i in "${!docker_command[@]}"; do
+          if [[ ${docker_command[i]} == "-w" ]]; then
+            wd="${docker_command[i + 1]}"
+            break
+          fi
+        done
+
+        _inputs_info | tee -a "$GITHUB_STEP_SUMMARY"
+        _env_info

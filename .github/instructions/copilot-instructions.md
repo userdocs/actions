@@ -100,6 +100,7 @@ Meta for AI contributors
 - Prefer small, well-named functions and staged changes.
 - Preserve existing public behavior and style unless the prompt requires changes.
 - If something cannot be done with available context/tools, state why and propose the smallest viable alternative.
+
 # Bash Scripting - All repos
 
 - use $BASH_SOURCE instead of $0
