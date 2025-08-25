@@ -33,6 +33,15 @@ runs:
         }
 
         to_gh_env() {
+          for kv in "$@"; do
+            case $kv in
+              *=*)
+                key=${kv%%=*}   # part before '='
+                val=${kv#*=}    # part after '='
+                printf -v "$key" '%s' "$val"
+                ;;
+            esac
+          done
           printf '%s\n' "${1}" | tee -a "$GITHUB_ENV"
         }
 
@@ -50,24 +59,27 @@ runs:
 
         case "${runner_arch}" in
           X86 | X64)
-            if [[ ${guess_the_arch} =~ ^(default|amd64|x86*|i386|i586|i686)$ ]]; then
+            if [[ ${guess_the_arch} =~ ^((default|amd64|x86|i386|i586|i686).*)$ ]]; then
               to_gh_env "skip_qemu=true"
+              # save the entire match now so it isn't lost or overwritten later
+              qemu_target="${BASH_REMATCH[0]}"
               log_summary skip_qemu=true
             fi
             ;;
           ARM | ARM64)
-            if [[ ${guess_the_arch} =~ ^(default|aarch64|arm.*)$ ]]; then
+            if [[ ${guess_the_arch} =~ ^((default|aarch64|arm).*)$ ]]; then
               to_gh_env "skip_qemu=true"
+              # save the entire match now so it isn't lost or overwritten later
+              qemu_target="${BASH_REMATCH[0]}"
               log_summary skip_qemu=true
             fi
             ;;
         esac
 
-        if [[ $skip_qemu == 'true' ]]; then
-          to_gh_env "skip_qemu=no"
-          to_gh_env "qemu_target=${BASH_REMATCH[0]}"
-          log_summary "skip_qemu=no"
-          log_summary "qemu_target=${BASH_REMATCH[0]}"
+        if [[ $skip_qemu == "true" ]]; then
+          # use the captured qemu_target (saved at match time) to ensure the full match is exported
+          to_gh_env "qemu_target=${qemu_target}"
+          log_summary "qemu_target=${qemu_target}"
         fi
 
     - name: Update apt cache
