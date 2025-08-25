@@ -19,7 +19,7 @@ jobs:
     name: "boost_version: ${{ matrix.boost_version }} download_archive: ${{ matrix.download_archive }} extract_archive: ${{ matrix.extract_archive }} working_dirs: ${{ matrix.working_dirs }}"
 
     steps:
-      - uses: userdocs/actions/boost@e74d179578ddcf1cd07cd9eefd0915f33a3bd600 # v1.0.1
+      - uses: userdocs/actions/boost@749d0010d8abde6c8a8ffc720856de5e799bdfea # v1.0.2
         id: boost_version_info
         with:
           boost_version: ${{ matrix.boost_version }}
