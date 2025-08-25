@@ -405,7 +405,7 @@ runs:
           docker_command+=("$custom_image_tag")
         else
           # For userdocs images, use original image
-          docker_command+=("${inputs_os_id}:${inputs_os_version_id}")
+          docker_command+=("${inputs_os_id}:${inputs_os_version_id}" "${inputs_additional_debian_apps_array[@]}")
         fi
 
         docker run -it -d --name "${container_name}" "${clean_envs[@]}" "${docker_command[@]}" || {
