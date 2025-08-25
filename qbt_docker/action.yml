@@ -155,6 +155,68 @@ runs:
           docker_command+=("--env-file" "${workspace}/env.load")
         fi
 
+        # Note: The yml coming through from the action with is new line separated not space separated
+
+        # Parse the additional docker apps string into an array
+        IFS=$'\n' read -r -a inputs_additional_alpine_apps_array <<< "$(printf '%s' "$inputs_additional_alpine_apps" | tr -d '\r')"
+        IFS=$'\n' read -r -a inputs_additional_debian_apps_array <<< "$(printf '%s' "$inputs_additional_debian_apps" | tr -d '\r')"
+
+        # $INPUT_SETTING contains newline-separated items
+        # Read lines (preserve empty lines for filtering) and strip CRs
+        mapfile -t inputs_custom_docker_commands_array <<< "$(printf '%s' "$inputs_custom_docker_commands" | tr -d '\r')"
+
+        # Build a token array suitable for passing to docker run.
+        # Handle lines like: -e LDFLAGS=...  -> should become two tokens: -e and LDFLAGS=...
+        # Also preserve quoted values and split on whitespace otherwise.
+        clean_envs=()
+        for e in "${inputs_custom_docker_commands_array[@]}"; do
+          # Skip empty or whitespace-only lines
+          if [[ -z ${e//[[:space:]]/} ]]; then
+            continue
+          fi
+
+          # Trim leading/trailing whitespace
+          e_trim=$(printf '%s' "$e" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+          # If entry starts with -e followed by space, split into two args: -e and the rest
+          # If entry starts with a single-letter short flag followed by space (e.g. -v /host:/container or -u 1001:1001),
+          # split into two args: '-v' and the rest. Do NOT split combined flags like -it.
+          if [[ $e_trim =~ ^-([A-Za-z0-9])[[:space:]]+(.+) ]]; then
+            clean_envs+=("-${BASH_REMATCH[1]}")
+            # expand whitelisted variables in the value part before appending
+            _val="${BASH_REMATCH[2]}"
+            # Expand wd in all possible forms, including inside quotes and arrays
+            _val="${_val//\$\{wd\}/$wd}"
+            _val="${_val//\$wd/$wd}"
+            clean_envs+=("$_val")
+            continue
+          fi
+
+          # If entry starts with a long option followed by space (e.g. --env VAR=... or --volume /host:/container),
+          # split into two args: '--env' and the rest. Leave equals-form (--env=VAL) untouched.
+          if [[ $e_trim =~ ^(--[^[:space:]=]+)[[:space:]]+(.+) ]]; then
+            clean_envs+=("${BASH_REMATCH[1]}")
+            # expand whitelisted variables in the value part before appending
+            _val="${BASH_REMATCH[2]}"
+            # Expand wd in all possible forms, including inside quotes and arrays
+            _val="${_val//\$\{wd\}/$wd}"
+            _val="${_val//\$wd/$wd}"
+            clean_envs+=("$_val")
+            continue
+          fi
+
+          # Otherwise split the trimmed line into words honoring shell quoting
+          # read -r -a will split on IFS (spaces) and preserve quoted groups
+          read -r -a tokens <<< "$e_trim"
+          for t in "${tokens[@]}"; do
+            # expand whitelisted variables in each token before appending
+            _t="$t"
+            _t="${_t//\$\{wd\}/$wd}"
+            _t="${_t//\$wd/$wd}"
+            clean_envs+=("$_t")
+          done
+        done
+
         ###
         ### Fast-path: if the user supplied a Dockerfile, ignore other inputs except env related
         ###
@@ -240,74 +302,6 @@ runs:
         ###
         ### Fast-path: ends Here
         ###
-
-        # Note: The yml coming through from the action with is new line separated not space separated
-
-        # Parse the additional docker apps string into an array
-        IFS=$'\n' read -r -a inputs_additional_alpine_apps_array <<< "$(printf '%s' "$inputs_additional_alpine_apps" | tr -d '\r')"
-        IFS=$'\n' read -r -a inputs_additional_debian_apps_array <<< "$(printf '%s' "$inputs_additional_debian_apps" | tr -d '\r')"
-
-        # $INPUT_SETTING contains newline-separated items
-        # Read lines (preserve empty lines for filtering) and strip CRs
-        mapfile -t inputs_custom_docker_commands_array <<< "$(printf '%s' "$inputs_custom_docker_commands" | tr -d '\r')"
-
-        # Build a token array suitable for passing to docker run.
-        # Handle lines like: -e LDFLAGS=...  -> should become two tokens: -e and LDFLAGS=...
-        # Also preserve quoted values and split on whitespace otherwise.
-        clean_envs=()
-        for e in "${inputs_custom_docker_commands_array[@]}"; do
-          # Skip empty or whitespace-only lines
-          if [[ -z ${e//[[:space:]]/} ]]; then
-            continue
-          fi
-
-          # Trim leading/trailing whitespace
-          e_trim=$(printf '%s' "$e" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-
-          # If entry starts with -e followed by space, split into two args: -e and the rest
-          # If entry starts with a single-letter short flag followed by space (e.g. -v /host:/container or -u 1001:1001),
-          # split into two args: '-v' and the rest. Do NOT split combined flags like -it.
-          if [[ $e_trim =~ ^-([A-Za-z0-9])[[:space:]]+(.+) ]]; then
-            clean_envs+=("-${BASH_REMATCH[1]}")
-            # expand whitelisted variables in the value part before appending
-            _val="${BASH_REMATCH[2]}"
-            # Expand wd in all possible forms, including inside quotes and arrays
-            _val="${_val//\$\{wd\}/$wd}"
-            _val="${_val//\$wd/$wd}"
-            clean_envs+=("$_val")
-            continue
-          fi
-
-          # If entry starts with a long option followed by space (e.g. --env VAR=... or --volume /host:/container),
-          # split into two args: '--env' and the rest. Leave equals-form (--env=VAL) untouched.
-          if [[ $e_trim =~ ^(--[^[:space:]=]+)[[:space:]]+(.+) ]]; then
-            clean_envs+=("${BASH_REMATCH[1]}")
-            # expand whitelisted variables in the value part before appending
-            _val="${BASH_REMATCH[2]}"
-            # Expand wd in all possible forms, including inside quotes and arrays
-            _val="${_val//\$\{wd\}/$wd}"
-            _val="${_val//\$wd/$wd}"
-            clean_envs+=("$_val")
-            continue
-          fi
-
-          # Otherwise split the trimmed line into words honoring shell quoting
-          # read -r -a will split on IFS (spaces) and preserve quoted groups
-          read -r -a tokens <<< "$e_trim"
-          for t in "${tokens[@]}"; do
-            # expand whitelisted variables in each token before appending
-            _t="$t"
-            _t="${_t//\$\{wd\}/$wd}"
-            _t="${_t//\$wd/$wd}"
-            clean_envs+=("$_t")
-          done
-        done
-
-        # # debug/demo output (keeps previous behavior)
-        # printf '%s\n' "${clean_envs[@]}"
-        # printf '%s' "${clean_envs[@]}"
-
-        # declare -p clean_envs
 
         if [[ $inputs_use_root == "false" ]]; then
           docker_command+=("-u" "${non_root_uid}:${non_root_gid}")
