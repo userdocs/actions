@@ -1,19 +1,30 @@
-name: ci host - qemu user static install
-description: An action to install qemu user static for cross-compilation via apt on the host runner.
+name: QEMU User Static Installer
+description: Installs QEMU user-mode static emulation for cross-compilation. Automatically skips installation when target architecture matches host to optimize build times.
+branding:
+  icon: cpu
+  color: blue
 inputs:
   distinct_id:
-    description: "Unique identifier for the container instance"
+    description: "Unique identifier for the action instance (currently unused)"
     required: false
     default: ""
   target_arch:
-    description: "Set matrix that define targets here as we guess the rest"
+    description: "Target architecture for cross-compilation (e.g., amd64, arm64, armv7, i386). Used to determine if QEMU emulation is needed."
     required: false
     default: ""
+outputs:
+  skip_qemu:
+    description: "Set to 'true' when QEMU installation was skipped because target matches host architecture"
+    value: ${{ steps.qemu_check.outputs.skip_qemu }}
+  qemu_target:
+    description: "The target architecture that QEMU will emulate"
+    value: ${{ steps.qemu_check.outputs.qemu_target }}
 runs:
   using: "composite"
   steps:
     
     - name: determine host and target combination.
+      id: qemu_check
       shell: bash
       env:
         runner_arch: ${{ runner.arch }}
@@ -61,25 +72,24 @@ runs:
           X86 | X64)
             if [[ ${guess_the_arch} =~ ^((default|amd64|x86|i386|i586|i686).*)$ ]]; then
               to_gh_env "skip_qemu=true"
-              # save the entire match now so it isn't lost or overwritten later
-              qemu_target="${BASH_REMATCH[0]}"
+              to_gh_output "skip_qemu=true"
               log_summary skip_qemu=true
             fi
             ;;
           ARM | ARM64)
             if [[ ${guess_the_arch} =~ ^((default|aarch64|arm).*)$ ]]; then
               to_gh_env "skip_qemu=true"
-              # save the entire match now so it isn't lost or overwritten later
-              qemu_target="${BASH_REMATCH[0]}"
+              to_gh_output "skip_qemu=true"
               log_summary skip_qemu=true
             fi
             ;;
         esac
 
-        if [[ $skip_qemu == "true" ]]; then
-          # use the captured qemu_target (saved at match time) to ensure the full match is exported
-          to_gh_env "qemu_target=${qemu_target}"
-          log_summary "qemu_target=${qemu_target}"
+        if [[ -z $skip_qemu ]]; then
+          log_summary "host_arch=${runner_arch}"
+          log_summary "qemu_target=${guess_the_arch}"
+          to_gh_env "qemu_target=${guess_the_arch}"
+          to_gh_output "qemu_target=${guess_the_arch}"
         fi
 
     - name: Update apt cache
