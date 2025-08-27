@@ -7,14 +7,14 @@ Creates and configures Docker containers for CI/CD workflows with cross-platform
 | Input                    | Description                                                    | Required | Default    |
 | ------------------------ | -------------------------------------------------------------- | -------- | ---------- |
 | `distinct_id`            | Unique identifier for the container instance                   | false    | `""`       |
-| `dockerfile`             | A url to raw or a filename assumed to be local  to the repo    | false    | `""`       |
+| `dockerfile`             | Use a provided dockerfile name or url                          | false    | `""`       |
 | `use_host_env`           | Include host environment variables in container                | false    | `"false"`  |
-| `use_root`               | Run container as root 0:0 with gh 1001:1001 available to use   | false    | `"false"`  |
+| `use_root`               | Use root 0:0 for the image user instead of gh 1001:1001        | false    | `"false"`  |
 | `os_id`                  | Docker image name/OS identifier (e.g., alpine, ubuntu, debian) | false    | `"alpine"` |
 | `os_version_id`          | Docker image tag/OS version (e.g., edge, latest, 22.04)        | false    | `"edge"`   |
 | `custom_docker_commands` | Additional Docker run arguments (space-separated)              | false    | `""`       |
-| `additional_alpine_apps` | Extra Alpine packages to install (space-separated)             | false    | `""`       |
-| `additional_debian_apps` | Extra Debian/Ubuntu packages to install (space-separated)      | false    | `""`       |
+| `additional_apps`        | Extra packages to install (space-separated)                    | false    | `""`       |
+| `platform`               | The linux platform to use to build and run images              | false    | `""`       |
 
 > [!note]
 > using `dockerfile` will not configure the docker command other than to load host env or custom env if enabled/used.
@@ -23,11 +23,12 @@ Creates and configures Docker containers for CI/CD workflows with cross-platform
 >
 > The assumption is that your dockerfile is configured how you need it and we are just using it.
 
-## env created
+## Outputs
 
-| `GITHUB_ENV`     | Description                            |
+| Output           | Description                            |
 | ---------------- | -------------------------------------- |
-| `container_name` | `qbt_builder`                          |
+| `container_name` | The name of the created container      |
+| `uid`            | The user ID used in the container      |
 | `wd`             | The working directory in the container |
 
 ## Usage Example
@@ -45,8 +46,8 @@ Creates and configures Docker containers for CI/CD workflows with cross-platform
     os_id: ${{ matrix.os_id }} # this action works with ghcr.io/userdocs/* images and generic images like debian/ubuntu/alpine
     os_version_id: ${{ matrix.os_version_id }}
     # custom_docker_commands: "" # custom docker cli commands to run in the container
-    # additional_alpine_apps: "curl git" # apk add this string
-    # additional_debian_apps: "curl git" # apt install this string
+    # additional_apps: "curl git" # packages to install (Alpine: apk add, Debian/Ubuntu: apt install)
+    # platform: "linux/amd64" # platform to build and run images on
 
     # These are already set to GITHUB_ENV via the action. Just an alternative way to access them
 - name: Use qbt_docker outputs

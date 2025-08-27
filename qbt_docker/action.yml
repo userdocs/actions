@@ -9,10 +9,6 @@ inputs:
     description: "Use a provided dockerfile name or url"
     required: false
     default: ""
-  userdocs_base: 
-    description: "define the base image of the ghcr.io/userdocs image"
-    required: false
-    default: "alpine"
   use_host_env:
     description: "Include host environment variables in container"
     required: false
@@ -711,9 +707,18 @@ runs:
 
         # These are set to github env/outputs and cannot be changed or manipulated by inputs"
         _env_info() {
-          # These are readonly constants, no validation needed
-          printf '%s\n' "container_name=${container_name}" >> "$GITHUB_ENV"
-          printf '%s\n' "wd=$wd" >> "$GITHUB_ENV"
+          # Set environment variables using the helper function
+          to_gh_env "container_name=${container_name}"
+          to_gh_env "wd=$wd"
+          
+          # Set outputs using the helper function
+          to_gh_output "container_name=${container_name}"
+          to_gh_output "wd=$wd"
+          if [[ $inputs_use_root == "true" ]]; then
+            to_gh_output "uid=0"
+          else
+            to_gh_output "uid=${non_root_uid}"
+          fi
         }
 
         to_gh_env() {
