@@ -65,6 +65,7 @@ runs:
         runner_arch: ${{ runner.arch }}
       shell: bash
       run: |
+        set -x
         # These variables are immutable and cannot be changed by injection or used to run subshell commands.
         readonly container_name="qbt_builder"
         readonly wd="/home/gh"
