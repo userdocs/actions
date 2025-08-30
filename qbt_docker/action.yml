@@ -229,79 +229,170 @@ runs:
           # Check if required tools are available
           if ! command -v docker > /dev/null 2>&1; then
             log_debug "Docker not available, using image name fallback" >&2
+            detected_os=$(detect_os_fallback "$image")
           elif ! command -v jq > /dev/null 2>&1; then
             log_debug "jq not available, using image name fallback" >&2
+            detected_os=$(detect_os_fallback "$image")
           else
-            # Use docker buildx imagetools to inspect the image
-            local image_url
-            local docker_inspect_json
-
             # Get the raw JSON first to avoid complex jq parsing in a single command
+            local docker_inspect_json
             docker_inspect_json=$(docker buildx imagetools inspect "$image" --format '{{json .}}' 2> /dev/null || echo "")
 
             if [[ -n $docker_inspect_json && $docker_inspect_json != "" ]]; then
-              # Try to extract URL label with safer jq parsing
-              image_url=$(echo "$docker_inspect_json" | jq -r 'try (.image[.image | keys[0]].config.Labels."org.opencontainers.image.url" // "")' 2> /dev/null || echo "")
+              # Section 1: GHCR userdocs-specific metadata parsing
+              detected_os=$(detect_os_userdocs "$docker_inspect_json")
 
-              if [[ -n $image_url && $image_url != "null" && $image_url != "" ]]; then
-                log_debug "Found image URL: $image_url" >&2
-
-                case "$image_url" in
-                  *_alpine)
-                    detected_os="alpine"
-                    ;;
-                  *_debian)
-                    detected_os="debian"
-                    ;;
-                  *ubuntu)
-                    detected_os="ubuntu"
-                    ;;
-                  *)
-                    log_debug "Could not determine OS from URL pattern: $image_url" >&2
-                    ;;
-                esac
+              # Section 2: Official Docker images detection
+              if [[ -z $detected_os ]]; then
+                detected_os=$(detect_os_official "$docker_inspect_json" "$image")
               fi
 
-              # If URL method failed, try history fallback
+              # Section 3: Fallback detection with combined checks
               if [[ -z $detected_os ]]; then
-                log_debug "No image URL found in labels, trying history fallback" >&2
-                local history_check
-                history_check=$(echo "$docker_inspect_json" | jq -r 'try (.image[.image | keys[0]].history[].created_by // "")' 2> /dev/null | grep -i -E 'alpine|debian|ubuntu' | head -1 || echo "")
-
-                if [[ -n $history_check ]]; then
-                  log_debug "Found OS in history: $history_check" >&2
-                  case "$history_check" in
-                    *alpine*)
-                      detected_os="alpine"
-                      ;;
-                    *debian*)
-                      detected_os="debian"
-                      ;;
-                    *ubuntu*)
-                      detected_os="ubuntu"
-                      ;;
-                  esac
-                else
-                  log_debug "No OS found in history" >&2
-                fi
+                detected_os=$(detect_os_fallback_with_metadata "$docker_inspect_json" "$image")
               fi
             else
               log_debug "Failed to inspect image with docker buildx" >&2
+              detected_os=$(detect_os_fallback "$image")
             fi
           fi
 
-          # Final fallback to image name parsing if all methods fail
+          # Final safety fallback
           if [[ -z $detected_os ]]; then
-            log_debug "Using image name fallback" >&2
+            detected_os="unknown"
+          fi
 
-            # Handle arch-prefixed images (e.g., arm64v8/alpine:edge)
-            local base_image="$image"
-            if [[ $image =~ ^[a-z0-9]+/(.*) ]]; then
-              base_image="${BASH_REMATCH[1]}"
-              log_debug "Detected arch-prefixed image, using base: $base_image" >&2
+          log_debug "Detected OS: $detected_os" >&2
+          printf '%s' "$detected_os"
+        }
+
+        # Section 1: GHCR userdocs-specific metadata parsing
+        detect_os_userdocs() {
+          local docker_inspect_json="$1"
+          local detected_os=""
+
+          log_debug "Checking for GHCR userdocs metadata" >&2
+
+          # Check for userdocs-specific labels
+          local base_id
+          local base_name
+          base_id=$(echo "$docker_inspect_json" | jq -r 'try (.image[.image | keys[0]].config.Labels."org.opencontainers.image.base.id" // "")' 2> /dev/null || echo "")
+          base_name=$(echo "$docker_inspect_json" | jq -r 'try (.image[.image | keys[0]].config.Labels."org.opencontainers.image.base.name" // "")' 2> /dev/null || echo "")
+
+          if [[ -n $base_id && $base_id != "null" && $base_id != "" ]]; then
+            log_debug "Found userdocs base.id: $base_id" >&2
+            case "$base_id" in
+              alpine)
+                detected_os="alpine"
+                ;;
+              debian)
+                detected_os="debian"
+                ;;
+              ubuntu)
+                detected_os="ubuntu"
+                ;;
+            esac
+          elif [[ -n $base_name && $base_name != "null" && $base_name != "" ]]; then
+            log_debug "Found userdocs base.name: $base_name" >&2
+            # Parse base.name (e.g., "alpine:edge")
+            local base_os
+            base_os="${base_name%%:*}" # Extract part before :
+            base_os="${base_os%%/*}"   # Extract part before / (in case of registry prefix)
+            case "$base_os" in
+              alpine)
+                detected_os="alpine"
+                ;;
+              debian)
+                detected_os="debian"
+                ;;
+              ubuntu)
+                detected_os="ubuntu"
+                ;;
+            esac
+          fi
+
+          [[ -n $detected_os ]] && log_debug "Userdocs detection result: $detected_os" >&2
+          printf '%s' "$detected_os"
+        }
+
+        # Section 2: Official Docker images detection
+        detect_os_official() {
+          local docker_inspect_json="$1"
+          local image="$2"
+          local detected_os=""
+
+          log_debug "Checking for official Docker image patterns" >&2
+
+          # Check URL metadata for official Docker images
+          local image_url
+          image_url=$(echo "$docker_inspect_json" | jq -r 'try (.image[.image | keys[0]].config.Labels."org.opencontainers.image.url" // "")' 2> /dev/null || echo "")
+
+          if [[ -n $image_url && $image_url != "null" && $image_url != "" ]]; then
+            log_debug "Found image URL: $image_url" >&2
+
+            case "$image_url" in
+              *hub.docker.com/_/alpine*)
+                detected_os="alpine"
+                ;;
+              *hub.docker.com/_/debian*)
+                detected_os="debian"
+                ;;
+              *hub.docker.com/_/ubuntu*)
+                detected_os="ubuntu"
+                ;;
+            esac
+          fi
+
+          # Secondary check: parse image name for official format
+          if [[ -z $detected_os ]]; then
+            local image_name
+            image_name=$(echo "$docker_inspect_json" | jq -r 'try (.name // "")' 2> /dev/null || echo "$image")
+
+            if [[ -n $image_name && $image_name != "null" ]]; then
+              log_debug "Checking image name: $image_name" >&2
+
+              # Handle arch-prefixed images (e.g., arm64v8/alpine:edge)
+              local base_name="$image_name"
+              if [[ $image_name =~ ^[a-z0-9]+/(.*) ]]; then
+                base_name="${BASH_REMATCH[1]}"
+                log_debug "Detected arch-prefixed image, using base: $base_name" >&2
+              fi
+
+              # Extract the base OS name (first part before :)
+              local os_part="${base_name%%:*}"
+              case "$os_part" in
+                alpine)
+                  detected_os="alpine"
+                  ;;
+                debian)
+                  detected_os="debian"
+                  ;;
+                ubuntu)
+                  detected_os="ubuntu"
+                  ;;
+              esac
             fi
+          fi
 
-            case "$base_image" in
+          [[ -n $detected_os ]] && log_debug "Official Docker detection result: $detected_os" >&2
+          printf '%s' "$detected_os"
+        }
+
+        # Section 3: Fallback detection with metadata and name parsing
+        detect_os_fallback_with_metadata() {
+          local docker_inspect_json="$1"
+          local image="$2"
+          local detected_os=""
+
+          log_debug "Using fallback detection with metadata" >&2
+
+          # Check history for OS hints
+          local history_check
+          history_check=$(echo "$docker_inspect_json" | jq -r 'try (.image[.image | keys[0]].history[].created_by // "")' 2> /dev/null | grep -i -E 'alpine|debian|ubuntu' | head -1 || echo "")
+
+          if [[ -n $history_check ]]; then
+            log_debug "Found OS in history: $history_check" >&2
+            case "$history_check" in
               *alpine*)
                 detected_os="alpine"
                 ;;
@@ -311,14 +402,55 @@ runs:
               *ubuntu*)
                 detected_os="ubuntu"
                 ;;
-              *)
-                log_debug "Could not determine OS from image name: $base_image" >&2
-                detected_os="unknown"
-                ;;
             esac
           fi
 
-          log_debug "Detected OS: $detected_os" >&2
+          # If still no match, use name parsing fallback
+          if [[ -z $detected_os ]]; then
+            detected_os=$(detect_os_fallback "$image")
+          fi
+
+          [[ -n $detected_os ]] && log_debug "Fallback with metadata result: $detected_os" >&2
+          printf '%s' "$detected_os"
+        }
+
+        # Final fallback: name parsing only
+        detect_os_fallback() {
+          local image="$1"
+          local detected_os=""
+
+          log_debug "Using name-only fallback detection" >&2
+
+          # Handle arch-prefixed images (e.g., arm64v8/alpine:edge)
+          local base_image="$image"
+          if [[ $image =~ ^[a-z0-9]+/(.*) ]]; then
+            base_image="${BASH_REMATCH[1]}"
+            log_debug "Detected arch-prefixed image, using base: $base_image" >&2
+          fi
+
+          # Split on common separators and check each part
+          local IFS=$':-_/'
+          local -a name_parts
+          read -ra name_parts <<< "$base_image"
+
+          for part in "${name_parts[@]}"; do
+            case "$part" in
+              *alpine*)
+                detected_os="alpine"
+                break
+                ;;
+              *debian*)
+                detected_os="debian"
+                break
+                ;;
+              *ubuntu*)
+                detected_os="ubuntu"
+                break
+                ;;
+            esac
+          done
+
+          [[ -n $detected_os ]] && log_debug "Name-only fallback result: $detected_os" >&2
           printf '%s' "$detected_os"
         }
 
@@ -710,7 +842,7 @@ runs:
           # Set environment variables using the helper function
           to_gh_env "container_name=${container_name}"
           to_gh_env "wd=$wd"
-          
+
           # Set outputs using the helper function
           to_gh_output "container_name=${container_name}"
           to_gh_output "wd=$wd"
