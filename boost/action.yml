@@ -51,6 +51,9 @@ outputs:
   BOOST_ARCHIVE_SHA256SUM:
     description: "The sha256sum of the boost archive"
     value: ${{ steps.boost_version_info.outputs.BOOST_ARCHIVE_SHA256SUM }}
+  BOOST_ASSETS_FOUND:
+    description: "Whether the boost assets were found"
+    value: ${{ steps.boost_version_info.outputs.BOOST_ASSETS_FOUND }}
 runs:
   using: "composite"
   steps:
@@ -83,7 +86,7 @@ runs:
           BOOST_VERSION_CURL=$(curl -sLSI -o /dev/null -w "%{url_effective}" "https://github.com/boostorg/boost/releases/latest" | xargs basename | sed 's/^boost-//')
         fi
 
-        if [ "${BOOST_VERSION_GIT}"" = "${BOOST_VERSION_CURL}"" ]; then
+        if [ "${BOOST_VERSION_GIT}" = "${BOOST_VERSION_CURL}" ]; then
           BOOST_VERSION="${BOOST_VERSION_GIT}"
         else
             printf '%s\n' "Error: Boost tag result does not match latest release result."
@@ -98,17 +101,22 @@ runs:
         BOOST_MINOR_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\2|')"
         BOOST_PATCH_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\3|')"
 
-        if curl -sfLIo /dev/null "https://github.com/boostorg/boost/releases/download/boost-${boost_version}/boost-${boost_version}-b2-nodocs.tar.xz"; then
-          BOOST_URL="https://github.com/boostorg/boost/releases/download/boost-${boost_version}/boost-${boost_version}-b2-nodocs.tar.xz" && boost_tar_xz="true"
-        elif curl -sfLI o /dev/null "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
+        if curl -sfLIo /dev/null "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-b2-nodocs.tar.xz"; then
+          BOOST_URL="https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-b2-nodocs.tar.xz" && boost_tar_xz="true"
+          BOOST_ASSETS_FOUND="true"
+        elif curl -sfLIo /dev/null "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
           BOOST_URL="https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"
-        elif curl -sfLI o /dev/null "https://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
+          BOOST_ASSETS_FOUND="true"
+        elif curl -sfLIo /dev/null "https://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
           BOOST_URL="https://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"
-        elif curl -sfLI o /dev/null "https://github.com/userdocs/boost/releases/download/boost-${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
+          BOOST_ASSETS_FOUND="true"
+        elif curl -sfLIo /dev/null "https://github.com/userdocs/boost/releases/download/boost-${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"; then
           BOOST_URL="https://github.com/userdocs/boost/releases/download/boost-${BOOST_VERSION}/boost_${BOOST_VERSION_UNDERSCORES}.tar.gz"
+          BOOST_ASSETS_FOUND="true"
         else
           printf '%s\n' "Error: Unable to find a download link for Boost version: ${BOOST_VERSION}"
-          exit 1
+          BOOST_ASSETS_FOUND="false"
+          BOOST_URL=""
         fi
 
         if [ "${boost_tar_xz}" = "true" ]; then
@@ -142,6 +150,9 @@ runs:
 
         printf '%s\n' "BOOST_FOLDER_NAME: ${BOOST_FOLDER_NAME}"
         printf '%s\n' "BOOST_FOLDER_NAME=${BOOST_FOLDER_NAME}" >> $GITHUB_OUTPUT
+
+        printf '%s\n' "BOOST_ASSETS_FOUND: ${BOOST_ASSETS_FOUND}"
+        printf '%s\n' "BOOST_ASSETS_FOUND=${BOOST_ASSETS_FOUND}" >> $GITHUB_OUTPUT
 
         if [ "${inputs_download_archive}" = "true" ]; then
           printf '%s\n' "Downloading ${BOOST_URL} to ${BOOST_ARCHIVE_NAME}"
