@@ -84,22 +84,22 @@ runs:
         else
           BOOST_VERSION_GIT="$(git ls-remote -q -t --refs https://github.com/boostorg/boost.git | awk '{sub("refs/tags/boost-", "");sub("(.*)(rc|alpha|beta|-bgl)(.*)", ""); print $2 }' | awk '!/^$/' | sort -rV | head -n1)"
           BOOST_VERSION_CURL=$(curl -sLSI -o /dev/null -w "%{url_effective}" "https://github.com/boostorg/boost/releases/latest" | xargs basename | sed 's/^boost-//')
-        fi
 
-        if [ "${BOOST_VERSION_GIT}" = "${BOOST_VERSION_CURL}" ]; then
-          BOOST_VERSION="${BOOST_VERSION_GIT}"
-        else
+          if [ "${BOOST_VERSION_GIT}" = "${BOOST_VERSION_CURL}" ]; then
+            BOOST_VERSION="${BOOST_VERSION_GIT}"
+          else
             printf '%s\n' "Error: Boost tag result does not match latest release result."
             exit 1
+          fi
         fi
 
         printf '%s\n' "BOOST_VERSION_GIT: ${BOOST_VERSION_GIT}"
         printf '%s\n' "BOOST_VERSION_CURL: ${BOOST_VERSION_CURL}"
 
         BOOST_VERSION_UNDERSCORES="$(printf '%s\n' "${BOOST_VERSION}" | sed 's/\./_/g')"
-        BOOST_MAJOR_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\1|')"
-        BOOST_MINOR_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\2|')"
-        BOOST_PATCH_VERSION="$(printf '%s' "${BOOST_VERSION}" | sed -r 's|([^.]+)\.([^.]+)\.([^.]+)|\3|')"
+        BOOST_MAJOR_VERSION="$(printf '%s' "${BOOST_VERSION}" | cut -d. -f1)"
+        BOOST_MINOR_VERSION="$(printf '%s' "${BOOST_VERSION}" | cut -d. -f2)"
+        BOOST_PATCH_VERSION="$(printf '%s' "${BOOST_VERSION}" | cut -d. -f3)"
 
         if curl -sfLIo /dev/null "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-b2-nodocs.tar.xz"; then
           BOOST_URL="https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-b2-nodocs.tar.xz" && boost_tar_xz="true"
@@ -155,14 +155,18 @@ runs:
         printf '%s\n' "BOOST_ASSETS_FOUND=${BOOST_ASSETS_FOUND}" >> $GITHUB_OUTPUT
 
         if [ "${inputs_download_archive}" = "true" ]; then
-          printf '%s\n' "Downloading ${BOOST_URL} to ${BOOST_ARCHIVE_NAME}"
-          if ! curl -sL "${BOOST_URL}" -o "${BOOST_ARCHIVE_NAME}"; then
-            printf '%s\n' "Error: ${BOOST_URL} did not download."
+          if [ "${BOOST_ASSETS_FOUND}" = "true" ]; then
+            printf '%s\n' "Downloading ${BOOST_URL} to ${BOOST_ARCHIVE_NAME}"
+            if ! curl -sL "${BOOST_URL}" -o "${BOOST_ARCHIVE_NAME}"; then
+              printf '%s\n' "Error: ${BOOST_URL} did not download."
+            else
+              printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")"
+              printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")" >> $GITHUB_OUTPUT
+              printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")"
+              printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")" >> $GITHUB_OUTPUT
+            fi
           else
-            printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")"
-            printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")" >> $GITHUB_OUTPUT
-            printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")"
-            printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")" >> $GITHUB_OUTPUT
+            printf '%s\n' "Skipping download: No assets found for version ${BOOST_VERSION}"
           fi
         fi
 
@@ -171,6 +175,6 @@ runs:
             printf '%s\n' "Extracting ${BOOST_ARCHIVE_NAME} to ${BOOST_FOLDER_NAME}"
             tar xf "${BOOST_ARCHIVE_NAME}"
           else
-            printf '%s\n' "Error: ${BOOST_ARCHIVE_NAME} does not exist."
+            printf '%s\n' "Skipping extraction: ${BOOST_ARCHIVE_NAME} does not exist."
           fi
         fi
