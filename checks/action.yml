@@ -45,6 +45,10 @@ inputs:
     description: "Exclude regex for editorconfig-checker"
     required: false
     default: "^(docs/.*|patches/.*)$"
+  editorconfig_skip_exit:
+    description: "Skip exiting with the editorconfig-checker exit code on failure"
+    required: false
+    default: "false"
 runs:
   using: "composite"
   steps:
@@ -79,6 +83,7 @@ runs:
         GITHUB_TOKEN: ${{ github.token }}
         runner_arch: ${{ runner.arch }}
         editorconfig_exclude: ${{ inputs.editorconfig_exclude }}
+        editorconfig_skip_exit: ${{ inputs.editorconfig_skip_exit }}
       run: |
         case "${runner_arch}" in
           X86 | X64)
@@ -90,6 +95,9 @@ runs:
         esac
 
         curl -Lo- "https://github.com/editorconfig-checker/editorconfig-checker/releases/latest/download/editorconfig-checker-linux-${arch}.tar.gz" | tar xzf -
+        set +o pipefail
         ./editorconfig-checker --exclude "${editorconfig_exclude}" | sed 's/\x1b\[[0-9;]*m//g' | { printf '%b\n' '```bash' >> "$GITHUB_STEP_SUMMARY"; tee -a "$GITHUB_STEP_SUMMARY"; printf '%b\n' '```' >> "$GITHUB_STEP_SUMMARY"; }
         exit_code="${PIPESTATUS[0]}"
-        exit "${exit_code}"
+        if [[ "${editorconfig_skip_exit}" != "true" ]]; then
+          exit "${exit_code}"
+        fi
