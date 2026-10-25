@@ -69,7 +69,7 @@ runs:
         if [ -n "${inputs_working_dir}" ]; then
           cd "${inputs_working_dir}"
           printf '%s\n' "BOOST_WORKING_DIR: ${inputs_working_dir}"
-          printf '%s\n' "BOOST_WORKING_DIR=${inputs_working_dir}" >> $GITHUB_OUTPUT
+          printf '%s\n' "BOOST_WORKING_DIR=${inputs_working_dir}" >> "$GITHUB_OUTPUT"
         fi
 
         for cmd in "git" "curl" "xz" "sha1sum" "sha256sum"; do
@@ -91,6 +91,18 @@ runs:
             printf '%s\n' "Error: Boost tag result does not match latest release result."
             exit 1
           fi
+        fi
+
+        # Reject empty or malformed versions; the char check also blocks newline injection into GITHUB_OUTPUT.
+        boost_version_valid="false"
+        case "${BOOST_VERSION}" in
+          *[!0-9.]*) ;;
+          *) printf '%s' "${BOOST_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' && boost_version_valid="true" ;;
+        esac
+
+        if [ "${boost_version_valid}" != "true" ]; then
+          printf '%s\n' "Error: Invalid or empty Boost version. Expected format: X.Y.Z"
+          exit 1
         fi
 
         printf '%s\n' "BOOST_VERSION_GIT: ${BOOST_VERSION_GIT}"
@@ -128,43 +140,44 @@ runs:
         fi
 
         printf '%s\n' "BOOST_VERSION: ${BOOST_VERSION}"
-        printf '%s\n' "BOOST_VERSION=${BOOST_VERSION}" >> $GITHUB_OUTPUT
+        printf '%s\n' "BOOST_VERSION=${BOOST_VERSION}" >> "$GITHUB_OUTPUT"
 
         printf '%s\n' "BOOST_GITHUB_TAG: boost-${BOOST_VERSION}"
-        printf '%s\n' "BOOST_GITHUB_TAG=boost-${BOOST_VERSION}" >> $GITHUB_OUTPUT
+        printf '%s\n' "BOOST_GITHUB_TAG=boost-${BOOST_VERSION}" >> "$GITHUB_OUTPUT"
 
         printf '%s\n' "BOOST_MAJOR_VERSION: ${BOOST_MAJOR_VERSION}"
-        printf '%s\n' "BOOST_MAJOR_VERSION=${BOOST_MAJOR_VERSION}" >> $GITHUB_OUTPUT
+        printf '%s\n' "BOOST_MAJOR_VERSION=${BOOST_MAJOR_VERSION}" >> "$GITHUB_OUTPUT"
 
         printf '%s\n' "BOOST_MINOR_VERSION: ${BOOST_MINOR_VERSION}"
-        printf '%s\n' "BOOST_MINOR_VERSION=${BOOST_MINOR_VERSION}" >> $GITHUB_OUTPUT
+        printf '%s\n' "BOOST_MINOR_VERSION=${BOOST_MINOR_VERSION}" >> "$GITHUB_OUTPUT"
 
         printf '%s\n' "BOOST_PATCH_VERSION: ${BOOST_PATCH_VERSION}"
-        printf '%s\n' "BOOST_PATCH_VERSION=${BOOST_PATCH_VERSION}" >> $GITHUB_OUTPUT
+        printf '%s\n' "BOOST_PATCH_VERSION=${BOOST_PATCH_VERSION}" >> "$GITHUB_OUTPUT"
 
         printf '%s\n' "BOOST_URL: ${BOOST_URL}"
-        printf '%s\n' "BOOST_URL=${BOOST_URL}" >> $GITHUB_OUTPUT
+        printf '%s\n' "BOOST_URL=${BOOST_URL}" >> "$GITHUB_OUTPUT"
 
         printf '%s\n' "BOOST_ARCHIVE_NAME: ${BOOST_ARCHIVE_NAME}"
-        printf '%s\n' "BOOST_ARCHIVE_NAME=${BOOST_ARCHIVE_NAME}" >> $GITHUB_OUTPUT
+        printf '%s\n' "BOOST_ARCHIVE_NAME=${BOOST_ARCHIVE_NAME}" >> "$GITHUB_OUTPUT"
 
         printf '%s\n' "BOOST_FOLDER_NAME: ${BOOST_FOLDER_NAME}"
-        printf '%s\n' "BOOST_FOLDER_NAME=${BOOST_FOLDER_NAME}" >> $GITHUB_OUTPUT
+        printf '%s\n' "BOOST_FOLDER_NAME=${BOOST_FOLDER_NAME}" >> "$GITHUB_OUTPUT"
 
         printf '%s\n' "BOOST_ASSETS_FOUND: ${BOOST_ASSETS_FOUND}"
-        printf '%s\n' "BOOST_ASSETS_FOUND=${BOOST_ASSETS_FOUND}" >> $GITHUB_OUTPUT
+        printf '%s\n' "BOOST_ASSETS_FOUND=${BOOST_ASSETS_FOUND}" >> "$GITHUB_OUTPUT"
 
         if [ "${inputs_download_archive}" = "true" ]; then
           if [ "${BOOST_ASSETS_FOUND}" = "true" ]; then
             printf '%s\n' "Downloading ${BOOST_URL} to ${BOOST_ARCHIVE_NAME}"
-            if ! curl -sL "${BOOST_URL}" -o "${BOOST_ARCHIVE_NAME}"; then
+            if ! curl -fsSL --retry 3 "${BOOST_URL}" -o "${BOOST_ARCHIVE_NAME}"; then
               printf '%s\n' "Error: ${BOOST_URL} did not download."
-            else
-              printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")"
-              printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")" >> $GITHUB_OUTPUT
-              printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")"
-              printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")" >> $GITHUB_OUTPUT
+              rm -f "${BOOST_ARCHIVE_NAME}"
+              exit 1
             fi
+            printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")"
+            printf '%s\n' "BOOST_ARCHIVE_SHA1SUM=$(sha1sum "${BOOST_ARCHIVE_NAME}")" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")"
+            printf '%s\n' "BOOST_ARCHIVE_SHA256SUM=$(sha256sum "${BOOST_ARCHIVE_NAME}")" >> "$GITHUB_OUTPUT"
           else
             printf '%s\n' "Skipping download: No assets found for version ${BOOST_VERSION}"
           fi
