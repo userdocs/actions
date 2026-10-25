@@ -1,0 +1,95 @@
+name: CI Checks
+description: Run sh-checker, zizmor, and editorconfig-checker in CI workflows
+inputs:
+  checkout:
+    description: "Checkout the repository before running checks"
+    required: false
+    default: "true"
+  shellcheck_opts:
+    description: "Options passed to shellcheck via SHELLCHECK_OPTS"
+    required: false
+    default: "-e SC2034,SC1091"
+  shfmt_opts:
+    description: "Options passed to shfmt via SHFMT_OPTS"
+    required: false
+    default: "-ci -sr -i 0"
+  sh_checker_comment:
+    description: "Show sh-checker errors as comments in pull requests"
+    required: false
+    default: "true"
+  sh_checker_exclude:
+    description: "Directory or file name patterns excluded from sh-checker"
+    required: false
+    default: ""
+  zizmor_inputs:
+    description: "Inputs to pass to zizmor"
+    required: false
+    default: "."
+  zizmor_advanced_security:
+    description: "Enable GitHub Advanced Security SARIF upload for zizmor results"
+    required: false
+    default: "true"
+  zizmor_persona:
+    description: "The auditing persona to use (regular, pedantic, auditor)"
+    required: false
+    default: "regular"
+  zizmor_online_audits:
+    description: "Whether to run zizmor online audits"
+    required: false
+    default: "true"
+  zizmor_config:
+    description: "Path to a custom zizmor configuration file"
+    required: false
+    default: ""
+  editorconfig_exclude:
+    description: "Exclude regex for editorconfig-checker"
+    required: false
+    default: "^(docs/.*|patches/.*)$"
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      if: inputs.checkout == 'true'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Run the sh-checker
+      uses: luizm/action-sh-checker@883217215b11c1fabbf00eb1a9a041f62d74c744 # v0.10.0
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        SHELLCHECK_OPTS: ${{ inputs.shellcheck_opts }}
+        SHFMT_OPTS: ${{ inputs.shfmt_opts }}
+      with:
+        sh_checker_comment: ${{ inputs.sh_checker_comment }}
+        sh_checker_exclude: ${{ inputs.sh_checker_exclude }}
+
+    - name: Run zizmor 🌈
+      uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+      with:
+        inputs: ${{ inputs.zizmor_inputs }}
+        advanced-security: ${{ inputs.zizmor_advanced_security }}
+        persona: ${{ inputs.zizmor_persona }}
+        online-audits: ${{ inputs.zizmor_online_audits }}
+        config: ${{ inputs.zizmor_config }}
+
+    - name: editorconfig-checker
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        runner_arch: ${{ runner.arch }}
+        editorconfig_exclude: ${{ inputs.editorconfig_exclude }}
+      run: |
+        case "${runner_arch}" in
+          X86 | X64)
+            arch="amd64"
+            ;;
+          ARM | ARM64)
+            arch="arm64"
+            ;;
+        esac
+
+        curl -Lo- "https://github.com/editorconfig-checker/editorconfig-checker/releases/latest/download/editorconfig-checker-linux-${arch}.tar.gz" | tar xzf -
+        ./editorconfig-checker --exclude "${editorconfig_exclude}" | sed 's/\x1b\[[0-9;]*m//g' | { printf '%b\n' '```bash' >> "$GITHUB_STEP_SUMMARY"; tee -a "$GITHUB_STEP_SUMMARY"; printf '%b\n' '```' >> "$GITHUB_STEP_SUMMARY"; }
+        exit_code="${PIPESTATUS[0]}"
+        exit "${exit_code}"
